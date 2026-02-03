@@ -11,7 +11,7 @@ import (
 type Option func(*Client)
 
 // WithEndpoint 设置 WebSocket 连接端点
-// 默认值: wss://open.wps.cn/v7/event/ws
+// 默认使用 SDK 内置端点，一般无需设置
 func WithEndpoint(endpoint string) Option {
 	return func(c *Client) {
 		if endpoint != "" {

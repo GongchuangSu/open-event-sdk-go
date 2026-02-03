@@ -1,4 +1,4 @@
-// Package kso 提供 KSO-1 签名相关工具
+// Package kso 提供 KSO-1 签名相关工具（内部使用）
 package kso
 
 import (
@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// Kso1Type 签名类型标识
-	Kso1Type = "KSO-1"
+	// kso1Type 签名类型标识
+	kso1Type = "KSO-1"
 
 	// HeaderKsoDate 日期请求头
 	HeaderKsoDate = "X-Kso-Date"
@@ -20,8 +20,8 @@ const (
 	// HeaderKsoAuthorization 授权请求头
 	HeaderKsoAuthorization = "X-Kso-Authorization"
 
-	// HeaderContentType Content-Type 请求头
-	HeaderContentType = "Content-Type"
+	// headerContentType Content-Type 请求头
+	headerContentType = "Content-Type"
 )
 
 // SignParams 签名参数
@@ -79,7 +79,7 @@ func Sign(p *SignParams) (*SignResult, error) {
 
 	// 2. 构建待签名字符串
 	// 格式：KSO-1 + method + uri + contentType + date + sha256(body)
-	stringToSign := Kso1Type + p.Method + p.RequestURI + p.ContentType + date + sha256Hex
+	stringToSign := kso1Type + p.Method + p.RequestURI + p.ContentType + date + sha256Hex
 
 	// 3. 使用 HMAC-SHA256 计算签名
 	mac := hmac.New(sha256.New, []byte(p.AppSecret))
@@ -87,7 +87,7 @@ func Sign(p *SignParams) (*SignResult, error) {
 	signature := hex.EncodeToString(mac.Sum(nil))
 
 	// 4. 构建 Authorization 头
-	authorization := fmt.Sprintf("%s %s:%s", Kso1Type, p.AppId, signature)
+	authorization := fmt.Sprintf("%s %s:%s", kso1Type, p.AppId, signature)
 
 	return &SignResult{
 		Date:          date,
@@ -114,7 +114,7 @@ func NewHeaders(appId, appSecret, method, uri, contentType string, body []byte) 
 	headers.Set(HeaderKsoDate, result.Date)
 	headers.Set(HeaderKsoAuthorization, result.Authorization)
 	if contentType != "" {
-		headers.Set(HeaderContentType, contentType)
+		headers.Set(headerContentType, contentType)
 	}
 
 	return headers, nil

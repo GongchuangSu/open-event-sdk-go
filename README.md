@@ -5,10 +5,10 @@
 ## 特性
 
 - **WebSocket 长连接**：与 HTTP 回调相比，延迟更低、实时性更好
-- **自动重连**：网络断开时自动重连，支持配置重连策略
+- **自动重连**：网络断开时自动重连，支持指数退避策略
 - **KSO-1 签名认证**：安全的认证机制
 - **灵活的事件处理**：支持单一 Handler 和 Dispatcher 分发两种模式
-- **可配置**：丰富的配置选项，支持自定义日志、端点等
+- **开箱即用**：内置默认配置，无需额外设置即可使用
 
 ## 安装
 
@@ -18,9 +18,9 @@ go get github.com/GongchuangSu/open-event-sdk-go
 
 ## 快速开始
 
-### 方式一：单一 Handler 模式
+### 方式一：简洁导入（推荐）
 
-适用于简单场景，所有事件由一个处理器统一处理：
+使用根包导入，API 更简洁：
 
 ```go
 package main
@@ -29,23 +29,17 @@ import (
     "context"
     "log"
 
-    "github.com/GongchuangSu/open-event-sdk-go/core"
-    "github.com/GongchuangSu/open-event-sdk-go/event"
-    "github.com/GongchuangSu/open-event-sdk-go/ws"
+    openevent "github.com/GongchuangSu/open-event-sdk-go"
 )
 
 func main() {
-    // 创建事件处理器
-    handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
-        log.Printf("收到事件: event_code=%s", e.EventCode())
-        log.Printf("事件数据: %s", e.Data)
-        return nil
-    })
-
-    // 创建客户端（使用默认端点 wss://openapi.wps.cn/v7/event/ws）
-    client := ws.NewClient("your_app_id", "your_app_secret",
-        ws.WithEventHandler(handler),
-        ws.WithLogLevel(core.LogLevelDebug),
+    // 创建客户端，开箱即用
+    client := openevent.NewClient("your_app_id", "your_app_secret",
+        openevent.WithEventHandlerFunc(func(ctx context.Context, e *openevent.Event) error {
+            log.Printf("收到事件: event_code=%s", e.EventCode())
+            log.Printf("事件数据: %s", e.Data)
+            return nil
+        }),
     )
 
     // 启动长连接（阻塞）
@@ -55,9 +49,9 @@ func main() {
 }
 ```
 
-### 方式二：Dispatcher 分发模式
+### 方式二：分包导入
 
-适用于需要按事件编码（event_code）分别处理的场景：
+适用于需要更细粒度控制的场景：
 
 ```go
 package main
@@ -72,34 +66,63 @@ import (
 )
 
 func main() {
+    handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
+        log.Printf("收到事件: event_code=%s", e.EventCode())
+        return nil
+    })
+
+    client := ws.NewClient("your_app_id", "your_app_secret",
+        ws.WithEventHandler(handler),
+        ws.WithLogLevel(core.LogLevelDebug),
+    )
+
+    if err := client.Start(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Dispatcher 分发模式
+
+按事件编码（event_code）分别处理不同事件：
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    openevent "github.com/GongchuangSu/open-event-sdk-go"
+)
+
+func main() {
     // 创建分发器
-    dispatcher := event.NewDispatcher()
+    dispatcher := openevent.NewDispatcher()
 
     // 注册不同事件编码的处理器
     // 事件编码 = topic.operation，如 "kso.app_chat.message.create"
-    dispatcher.RegisterFunc("kso.app_chat.message.create", func(ctx context.Context, e *event.Event) error {
+    dispatcher.RegisterFunc("kso.app_chat.message.create", func(ctx context.Context, e *openevent.Event) error {
         log.Printf("处理聊天消息事件: %s", e.Data)
         return nil
     })
 
-    dispatcher.RegisterFunc("kso.user.status.update", func(ctx context.Context, e *event.Event) error {
+    dispatcher.RegisterFunc("kso.user.status.update", func(ctx context.Context, e *openevent.Event) error {
         log.Printf("处理用户状态变更事件: %s", e.Data)
         return nil
     })
 
-    // 注册兜底处理器（处理未注册的事件编码）
-    dispatcher.RegisterFallbackFunc(func(ctx context.Context, e *event.Event) error {
+    // 注册兜底处理器
+    dispatcher.RegisterFallbackFunc(func(ctx context.Context, e *openevent.Event) error {
         log.Printf("未知事件: event_code=%s", e.EventCode())
         return nil
     })
 
-    // 创建客户端（使用默认端点 wss://openapi.wps.cn/v7/event/ws）
-    client := ws.NewClient("your_app_id", "your_app_secret",
-        ws.WithDispatcher(dispatcher),
-        ws.WithLogLevel(core.LogLevelInfo),
+    // 创建客户端
+    client := openevent.NewClient("your_app_id", "your_app_secret",
+        openevent.WithDispatcher(dispatcher),
     )
 
-    // 启动
     if err := client.Start(context.Background()); err != nil {
         log.Fatal(err)
     }
@@ -111,15 +134,15 @@ func main() {
 ### 基础配置
 
 ```go
-client := ws.NewClient(appId, appSecret,
+client := openevent.NewClient(appId, appSecret,
     // 自定义 WebSocket 端点（可选，默认 wss://openapi.wps.cn/v7/event/ws）
-    ws.WithEndpoint("wss://custom-endpoint.com/event/ws"),
+    openevent.WithEndpoint("wss://custom-endpoint.com/event/ws"),
 
     // 设置日志级别
-    ws.WithLogLevel(core.LogLevelDebug),
+    openevent.WithLogLevel(openevent.LogLevelDebug),
 
     // 使用自定义日志
-    ws.WithLogger(customLogger),
+    openevent.WithLogger(customLogger),
 )
 ```
 
@@ -130,24 +153,24 @@ SDK 采用指数退避（Exponential Backoff）策略进行重连，避免在网
 **重连间隔计算公式**：`interval = min(baseInterval * multiplier^(retryCount-1), maxInterval) * (1 ± jitter)`
 
 ```go
-client := ws.NewClient(appId, appSecret,
+client := openevent.NewClient(appId, appSecret,
     // 开启/关闭自动重连（默认开启）
-    ws.WithAutoReconnect(true),
+    openevent.WithAutoReconnect(true),
 
     // 重连基础间隔（默认 1 秒）
-    ws.WithReconnectBaseInterval(1 * time.Second),
+    openevent.WithReconnectBaseInterval(1 * time.Second),
 
     // 重连最大间隔（默认 60 秒）
-    ws.WithReconnectMaxInterval(60 * time.Second),
+    openevent.WithReconnectMaxInterval(60 * time.Second),
 
     // 重连间隔倍数（默认 2.0）
-    ws.WithReconnectMultiplier(2.0),
+    openevent.WithReconnectMultiplier(2.0),
 
     // 最大重试次数（-1 表示无限重试，默认 -1）
-    ws.WithReconnectMaxRetry(10),
+    openevent.WithReconnectMaxRetry(10),
 
     // 重连抖动系数（默认 0.2，表示 ±20% 随机抖动）
-    ws.WithReconnectJitter(0.2),
+    openevent.WithReconnectJitter(0.2),
 )
 ```
 
@@ -166,12 +189,12 @@ client := ws.NewClient(appId, appSecret,
 ### 超时配置
 
 ```go
-client := ws.NewClient(appId, appSecret,
+client := openevent.NewClient(appId, appSecret,
     // 写操作超时（默认 10 秒）
-    ws.WithWriteWait(10 * time.Second),
+    openevent.WithWriteWait(10 * time.Second),
 
     // Pong 等待超时（默认 90 秒）
-    ws.WithPongWait(90 * time.Second),
+    openevent.WithPongWait(90 * time.Second),
 )
 ```
 
@@ -210,7 +233,6 @@ func (e *Event) EventCode() string
 - 事件编码 = `topic` + `.` + `operation`，全局唯一
 - 例如：`topic="kso.app_chat.message"`, `operation="create"` → `event_code="kso.app_chat.message.create"`
 - 通过 `e.EventCode()` 方法动态获取事件编码
-- 也可使用 `event.BuildEventCode(topic, operation)` 函数生成事件编码
 - Dispatcher 按事件编码进行事件分发
 
 ### 签名验证
@@ -233,7 +255,7 @@ func (e *Event) EventCode() string
 ### 处理成功
 
 ```go
-handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
+handler := openevent.HandlerFunc(func(ctx context.Context, e *openevent.Event) error {
     log.Printf("处理事件: event_code=%s", e.EventCode())
     
     // 解析事件数据
@@ -252,7 +274,7 @@ handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
 返回 `error` 表示处理失败：
 
 ```go
-handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
+handler := openevent.HandlerFunc(func(ctx context.Context, e *openevent.Event) error {
     if err := processEvent(e); err != nil {
         return err // 处理失败
     }
@@ -282,7 +304,7 @@ client.Start(ctx)
 
 ## 自定义日志
 
-实现 `core.Logger` 接口：
+实现 `Logger` 接口：
 
 ```go
 type Logger interface {
@@ -304,8 +326,8 @@ func (l *MyLogger) Debug(ctx context.Context, args ...interface{}) {
 
 // ... 其他方法
 
-client := ws.NewClient(appId, appSecret,
-    ws.WithLogger(&MyLogger{}),
+client := openevent.NewClient(appId, appSecret,
+    openevent.WithLogger(&MyLogger{}),
 )
 ```
 
@@ -313,23 +335,22 @@ client := ws.NewClient(appId, appSecret,
 
 ```
 open-event-sdk-go/
-├── ws/                     # WebSocket 客户端模块
+├── openevent.go            # 根包入口（推荐使用）
+├── ws/                     # WebSocket 客户端
 │   ├── client.go           # 客户端主逻辑
 │   ├── option.go           # 配置选项
-│   ├── message.go          # 消息定义
-│   ├── const.go            # 常量定义
 │   └── error.go            # 错误定义
-├── event/                  # 事件处理模块
+├── event/                  # 事件处理
 │   ├── dispatcher.go       # 事件分发器
 │   ├── handler.go          # Handler 接口
 │   └── event.go            # 事件实体
-├── core/                   # 核心公共模块
+├── core/                   # 核心公共组件
 │   └── logger.go           # 日志接口
-├── kso/                    # KSO-1 签名和加解密模块
-│   ├── signature.go        # 签名算法
-│   └── crypto.go           # 加解密算法
+├── internal/               # 内部实现（不对外暴露）
+│   ├── kso/                # KSO-1 签名和加解密
+│   └── protocol/           # WebSocket 协议定义
 └── examples/               # 使用示例
-    ├── simple/             # 简单示例（单一 Handler 模式）
+    ├── simple/             # 简单示例
     └── dispatcher/         # Dispatcher 模式示例
 ```
 

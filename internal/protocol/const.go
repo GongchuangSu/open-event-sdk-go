@@ -1,5 +1,5 @@
-// Package ws 提供 WebSocket 长连接客户端
-package ws
+// Package protocol 定义 WebSocket 协议常量（内部使用）
+package protocol
 
 import "time"
 
@@ -49,13 +49,4 @@ const (
 
 	// DefaultPongWait 默认等待 Pong 的超时时间
 	DefaultPongWait = 90 * time.Second
-)
-
-// HTTP Header 常量
-const (
-	// HeaderKsoDate KSO 日期头
-	HeaderKsoDate = "X-Kso-Date"
-
-	// HeaderKsoAuthorization KSO 认证头
-	HeaderKsoAuthorization = "X-Kso-Authorization"
 )

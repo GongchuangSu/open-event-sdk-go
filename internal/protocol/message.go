@@ -1,4 +1,5 @@
-package ws
+// Package protocol 定义 WebSocket 协议消息结构（内部使用）
+package protocol
 
 // EventMessage 事件消息（服务端 -> 客户端）
 // 事件消息不包含 type 字段，通过 topic 和 operation 字段判断
@@ -36,10 +37,4 @@ type GoAwayMessage struct {
 
 	// ReconnectMs 建议重连延迟（毫秒），仅在 server_shutdown 时提供
 	ReconnectMs int `json:"reconnect_ms,omitempty"`
-}
-
-// baseMessage 用于解析消息类型的基础结构
-// 事件消息不包含 type 字段，goaway 消息包含 type="goaway"
-type baseMessage struct {
-	Type string `json:"type"`
 }

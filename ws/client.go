@@ -1,3 +1,4 @@
+// Package ws 提供 WebSocket 长连接客户端
 package ws
 
 import (
@@ -15,7 +16,8 @@ import (
 
 	"github.com/GongchuangSu/open-event-sdk-go/core"
 	"github.com/GongchuangSu/open-event-sdk-go/event"
-	"github.com/GongchuangSu/open-event-sdk-go/kso"
+	"github.com/GongchuangSu/open-event-sdk-go/internal/kso"
+	"github.com/GongchuangSu/open-event-sdk-go/internal/protocol"
 )
 
 // Client WebSocket 长连接客户端
@@ -70,23 +72,22 @@ type Client struct {
 //
 //	client := ws.NewClient("your_app_id", "your_app_secret",
 //	    ws.WithEventHandler(handler),
-//	    ws.WithAutoReconnect(true),
 //	)
 func NewClient(appId, appSecret string, opts ...Option) *Client {
 	c := &Client{
 		appId:     appId,
 		appSecret: appSecret,
-		endpoint:  DefaultEndpoint,
+		endpoint:  protocol.DefaultEndpoint,
 
 		// 默认配置（指数退避重连策略）
-		autoReconnect:         DefaultAutoReconnect,
-		reconnectBaseInterval: DefaultReconnectBaseInterval,
-		reconnectMaxInterval:  DefaultReconnectMaxInterval,
-		reconnectMultiplier:   DefaultReconnectMultiplier,
-		reconnectMaxRetry:     DefaultReconnectMaxRetry,
-		reconnectJitter:       DefaultReconnectJitter,
-		writeWait:             DefaultWriteWait,
-		pongWait:              DefaultPongWait,
+		autoReconnect:         protocol.DefaultAutoReconnect,
+		reconnectBaseInterval: protocol.DefaultReconnectBaseInterval,
+		reconnectMaxInterval:  protocol.DefaultReconnectMaxInterval,
+		reconnectMultiplier:   protocol.DefaultReconnectMultiplier,
+		reconnectMaxRetry:     protocol.DefaultReconnectMaxRetry,
+		reconnectJitter:       protocol.DefaultReconnectJitter,
+		writeWait:             protocol.DefaultWriteWait,
+		pongWait:              protocol.DefaultPongWait,
 
 		logLevel: core.LogLevelInfo,
 		sendChan: make(chan []byte, 256),
@@ -423,7 +424,7 @@ func (c *Client) handleMessage(ctx context.Context, message []byte) {
 	}
 
 	// goaway 消息包含 type="goaway"
-	if base.Type == MessageTypeGoAway {
+	if base.Type == protocol.MessageTypeGoAway {
 		c.handleGoAwayMessage(ctx, message)
 		return
 	}
@@ -439,7 +440,7 @@ func (c *Client) handleMessage(ctx context.Context, message []byte) {
 
 // handleEventMessage 处理事件消息
 func (c *Client) handleEventMessage(ctx context.Context, message []byte) {
-	var msg EventMessage
+	var msg protocol.EventMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
 		c.logger.Error(ctx, fmt.Sprintf("unmarshal event message failed: %v", err))
 		return
@@ -494,7 +495,7 @@ func (c *Client) handleEventMessage(ctx context.Context, message []byte) {
 
 // handleGoAwayMessage 处理 GoAway 消息
 func (c *Client) handleGoAwayMessage(ctx context.Context, message []byte) {
-	var msg GoAwayMessage
+	var msg protocol.GoAwayMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
 		c.logger.Error(ctx, fmt.Sprintf("unmarshal goaway message failed: %v", err))
 		return
@@ -508,7 +509,7 @@ func (c *Client) handleGoAwayMessage(ctx context.Context, message []byte) {
 	c.receivedGoAway = true
 
 	// 如果是连接被替换，不重连
-	if msg.Reason == GoAwayReasonConnectionReplaced {
+	if msg.Reason == protocol.GoAwayReasonConnectionReplaced {
 		c.autoReconnect = false
 		c.mu.Unlock()
 		c.logger.Warn(ctx, "connection replaced by another client, will not reconnect")
