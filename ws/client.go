@@ -244,7 +244,25 @@ func (c *Client) connect(ctx context.Context) error {
 	c.connURL = u
 	c.receivedGoAway = false // 重置 GoAway 标志
 
-	// 设置 Pong 处理器
+	// 设置 Ping 处理器（服务端主动发送 Ping，客户端需要回复 Pong 并刷新超时）
+	// 注意：gorilla/websocket 默认的 PingHandler 会自动回复 Pong，
+	// 但设置自定义 PingHandler 后需要手动回复
+	conn.SetPingHandler(func(appData string) error {
+		c.logger.Debug(ctx, "received ping from server")
+		// 刷新读超时
+		if err := conn.SetReadDeadline(time.Now().Add(c.pongWait)); err != nil {
+			c.logger.Error(ctx, fmt.Sprintf("set read deadline failed in ping handler: %v", err))
+			return err
+		}
+		// 回复 Pong
+		if err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(c.writeWait)); err != nil {
+			c.logger.Error(ctx, fmt.Sprintf("write pong failed: %v", err))
+			return err
+		}
+		return nil
+	})
+
+	// 设置 Pong 处理器（用于客户端主动发送 Ping 的场景）
 	conn.SetPongHandler(func(appData string) error {
 		c.logger.Debug(ctx, "received pong")
 		return conn.SetReadDeadline(time.Now().Add(c.pongWait))
