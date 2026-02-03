@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **WebSocket 长连接**：与 HTTP 回调相比，延迟更低、实时性更好
+- **WebSocket 长连接**：无需公网 IP，延迟更低、实时性更好
 - **自动重连**：网络断开时自动重连，支持指数退避策略
 - **KSO-1 签名认证**：安全的认证机制
 - **灵活的事件处理**：支持单一 Handler 和 Dispatcher 分发两种模式
@@ -18,10 +18,6 @@ go get github.com/GongchuangSu/open-event-sdk-go
 
 ## 快速开始
 
-### 方式一：简洁导入（推荐）
-
-使用根包导入，API 更简洁：
-
 ```go
 package main
 
@@ -33,47 +29,12 @@ import (
 )
 
 func main() {
-    // 创建客户端，开箱即用
     client := openevent.NewClient("your_app_id", "your_app_secret",
         openevent.WithEventHandlerFunc(func(ctx context.Context, e *openevent.Event) error {
             log.Printf("收到事件: event_code=%s", e.EventCode())
             log.Printf("事件数据: %s", e.Data)
             return nil
         }),
-    )
-
-    // 启动长连接（阻塞）
-    if err := client.Start(context.Background()); err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-### 方式二：分包导入
-
-适用于需要更细粒度控制的场景：
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-
-    "github.com/GongchuangSu/open-event-sdk-go/core"
-    "github.com/GongchuangSu/open-event-sdk-go/event"
-    "github.com/GongchuangSu/open-event-sdk-go/ws"
-)
-
-func main() {
-    handler := event.HandlerFunc(func(ctx context.Context, e *event.Event) error {
-        log.Printf("收到事件: event_code=%s", e.EventCode())
-        return nil
-    })
-
-    client := ws.NewClient("your_app_id", "your_app_secret",
-        ws.WithEventHandler(handler),
-        ws.WithLogLevel(core.LogLevelDebug),
     )
 
     if err := client.Start(context.Background()); err != nil {
@@ -127,6 +88,89 @@ func main() {
         log.Fatal(err)
     }
 }
+```
+
+### 类型化事件处理
+
+目前部分事件已支持 `OnV7XXX` 方法，可使用链式调用注册类型化处理器，事件数据会自动解析为对应的结构体。其他事件请使用 `RegisterFunc` 方法处理。
+
+**已支持 OnV7XXX 方法的事件：**
+
+| 方法 | 事件编码 | 说明 |
+|------|---------|------|
+| `OnV7AppChatMessageCreate` | `kso.app_chat.message.create` | 用户给应用发送消息 |
+| `OnV7AppChatCreate` | `kso.app_chat.create` | 首次创建用户和机器人的会话 |
+| `OnV7AppGroupChatDelete` | `kso.xz.app.group_chat.delete` | 群聊解散 |
+| `OnV7AppGroupChatMemberUserCreate` | `kso.xz.app.group_chat.member.user.create` | 用户进群 |
+| `OnV7AppGroupChatMemberUserDelete` | `kso.xz.app.group_chat.member.user.delete` | 用户退群 |
+| `OnV7AppGroupChatMemberRobotCreate` | `kso.xz.app.group_chat.member.robot.create` | 机器人进群 |
+| `OnV7AppGroupChatMemberRobotDelete` | `kso.xz.app.group_chat.member.robot.delete` | 机器人退群 |
+
+**组合使用示例：**
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "log"
+
+    openevent "github.com/GongchuangSu/open-event-sdk-go"
+)
+
+func main() {
+    dispatcher := openevent.NewDispatcher()
+
+    // ========== 方式一: OnV7XXX 方法（类型安全，推荐） ==========
+    dispatcher.
+        OnV7AppChatMessageCreate(func(ctx context.Context, e *openevent.V7AppChatMessageCreateEvent) error {
+            log.Printf("收到消息: chat_id=%s, sender=%s", e.Data.Chat.Id, e.Data.Sender.Id)
+            return nil
+        }).
+        OnV7AppChatCreate(func(ctx context.Context, e *openevent.V7AppChatCreateEvent) error {
+            log.Printf("会话创建: chat_id=%s", e.Data.ChatId)
+            return nil
+        }).
+        OnV7AppGroupChatMemberUserCreate(func(ctx context.Context, e *openevent.V7AppGroupChatMemberUserCreateEvent) error {
+            log.Printf("用户进群: chat_id=%s", e.Data.ChatId)
+            return nil
+        })
+
+    // ========== 方式二: RegisterFunc（处理其他事件，需自行解析 Data） ==========
+    dispatcher.RegisterFunc("kso.user.status.update", func(ctx context.Context, e *openevent.Event) error {
+        log.Printf("用户状态变更: %s", e.EventCode())
+        var data map[string]any
+        json.Unmarshal([]byte(e.Data), &data)
+        log.Printf("数据: %+v", data)
+        return nil
+    })
+
+    // ========== 兜底处理器 ==========
+    dispatcher.RegisterFallbackFunc(func(ctx context.Context, e *openevent.Event) error {
+        log.Printf("未处理的事件: %s", e.EventCode())
+        return nil
+    })
+
+    client := openevent.NewClient("your_app_id", "your_app_secret",
+        openevent.WithDispatcher(dispatcher),
+    )
+
+    if err := client.Start(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+**使用事件数据模型：**
+
+如需直接使用事件数据模型，请导入 `model` 包：
+
+```go
+import "github.com/GongchuangSu/open-event-sdk-go/event/model"
+
+var sender model.V7Identity
+var data model.V7NotificationAppChatMessageCreateData
 ```
 
 ## 配置选项
@@ -342,8 +386,15 @@ open-event-sdk-go/
 │   └── error.go            # 错误定义
 ├── event/                  # 事件处理
 │   ├── dispatcher.go       # 事件分发器
+│   ├── dispatcher_typed.go # OnXXX 类型化处理方法
+│   ├── typed_event.go      # 类型化事件定义
 │   ├── handler.go          # Handler 接口
-│   └── event.go            # 事件实体
+│   ├── event.go            # 事件实体
+│   └── model/              # 事件数据模型
+│       ├── common.go       # 通用类型（Identity 等）
+│       ├── im.go           # IM 相关类型
+│       ├── im_event.go     # IM 事件数据结构
+│       └── event_code.go   # 事件编码常量
 ├── core/                   # 核心公共组件
 │   └── logger.go           # 日志接口
 ├── internal/               # 内部实现（不对外暴露）

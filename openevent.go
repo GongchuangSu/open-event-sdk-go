@@ -4,28 +4,28 @@
 //
 // 快速开始:
 //
-//	import openevent "github.com/GongchuangSu/open-event-sdk-go"
+//	client := openevent.NewClient("app_id", "app_secret",
+//	    openevent.WithEventHandlerFunc(func(ctx context.Context, e *openevent.Event) error {
+//	        log.Printf("收到事件: %s", e.EventCode())
+//	        return nil
+//	    }),
+//	)
+//	client.Start(context.Background())
 //
-//	func main() {
-//	    client := openevent.NewClient("your_app_id", "your_app_secret",
-//	        openevent.WithEventHandlerFunc(func(ctx context.Context, e *openevent.Event) error {
-//	            // EventCode = Topic.Operation，如 "kso.app_chat.message.create"
-//	            log.Printf("收到事件: event_code=%s, time=%d", e.EventCode(), e.Time)
-//	            log.Printf("事件数据: %s", e.Data)
-//	            return nil
-//	        }),
-//	    )
+// 使用 Dispatcher 分发事件:
 //
-//	    if err := client.Start(context.Background()); err != nil {
-//	        log.Fatal(err)
-//	    }
-//	}
+//	dispatcher := openevent.NewDispatcher().
+//	    // 已支持的事件使用 OnV7XXX 方法（类型安全）
+//	    OnV7AppChatMessageCreate(func(ctx context.Context, e *openevent.V7AppChatMessageCreateEvent) error {
+//	        log.Printf("收到消息: %s", e.Data.Message.Id)
+//	        return nil
+//	    })
 //
-// 使用事件分发器:
-//
-//	dispatcher := openevent.NewDispatcher()
-//	dispatcher.RegisterFunc("kso.app_chat.message.create", handleChatMessage)
-//	dispatcher.RegisterFunc("kso.user.status.update", handleUserStatusUpdate)
+//	// 其他事件使用 RegisterFunc 方法
+//	dispatcher.RegisterFunc("kso.other.event", func(ctx context.Context, e *openevent.Event) error {
+//	    log.Printf("其他事件: %s", e.Data)
+//	    return nil
+//	})
 //
 //	client := openevent.NewClient("app_id", "app_secret",
 //	    openevent.WithDispatcher(dispatcher),
@@ -63,6 +63,31 @@ type Logger = core.Logger
 
 // LogLevel 日志级别
 type LogLevel = core.LogLevel
+
+// ----- 类型化事件 -----
+// 注意: 如需使用泛型类型 TypedEvent[T] 和 TypedEventHandler[T]，请直接从 event 包导入:
+//   import "github.com/GongchuangSu/open-event-sdk-go/event"
+
+// V7AppChatMessageCreateEvent 应用收到消息事件
+type V7AppChatMessageCreateEvent = event.V7AppChatMessageCreateEvent
+
+// V7AppChatCreateEvent 应用会话创建事件
+type V7AppChatCreateEvent = event.V7AppChatCreateEvent
+
+// V7AppGroupChatDeleteEvent 群聊解散事件
+type V7AppGroupChatDeleteEvent = event.V7AppGroupChatDeleteEvent
+
+// V7AppGroupChatMemberUserCreateEvent 用户进群事件
+type V7AppGroupChatMemberUserCreateEvent = event.V7AppGroupChatMemberUserCreateEvent
+
+// V7AppGroupChatMemberUserDeleteEvent 用户退群事件
+type V7AppGroupChatMemberUserDeleteEvent = event.V7AppGroupChatMemberUserDeleteEvent
+
+// V7AppGroupChatMemberRobotCreateEvent 机器人进群事件
+type V7AppGroupChatMemberRobotCreateEvent = event.V7AppGroupChatMemberRobotCreateEvent
+
+// V7AppGroupChatMemberRobotDeleteEvent 机器人退群事件
+type V7AppGroupChatMemberRobotDeleteEvent = event.V7AppGroupChatMemberRobotDeleteEvent
 
 // ----- 错误类型 -----
 

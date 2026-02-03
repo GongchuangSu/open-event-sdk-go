@@ -1,4 +1,4 @@
-// Package main 演示使用 Dispatcher 按事件编码分发处理
+// Package main 演示使用 Dispatcher 处理事件
 package main
 
 import (
@@ -9,13 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/GongchuangSu/open-event-sdk-go/core"
-	"github.com/GongchuangSu/open-event-sdk-go/event"
-	"github.com/GongchuangSu/open-event-sdk-go/ws"
+	openevent "github.com/GongchuangSu/open-event-sdk-go"
 )
 
 func main() {
-	// 从环境变量获取配置
 	appId := os.Getenv("APP_ID")
 	appSecret := os.Getenv("APP_SECRET")
 
@@ -23,59 +20,48 @@ func main() {
 		log.Fatal("请设置 APP_ID 和 APP_SECRET 环境变量")
 	}
 
-	// 创建事件分发器
-	dispatcher := event.NewDispatcher()
+	// 创建分发器
+	dispatcher := openevent.NewDispatcher()
 
-	// 注册聊天消息创建事件处理器
-	// 事件编码 = topic.operation = "kso.app_chat.message.create"
-	dispatcher.RegisterFunc("kso.app_chat.message.create", func(ctx context.Context, e *event.Event) error {
-		log.Printf("[聊天消息] event_code=%s", e.EventCode())
+	// 使用 OnV7XXX 方法处理已支持的事件（类型安全）
+	dispatcher.
+		OnV7AppChatMessageCreate(func(ctx context.Context, e *openevent.V7AppChatMessageCreateEvent) error {
+			log.Printf("[消息] chat=%s, sender=%s, msg=%s", e.Data.Chat.Id, e.Data.Sender.Id, e.Data.Message.Id)
+			return nil
+		}).
+		OnV7AppChatCreate(func(ctx context.Context, e *openevent.V7AppChatCreateEvent) error {
+			log.Printf("[会话创建] chat=%s", e.Data.ChatId)
+			return nil
+		}).
+		OnV7AppGroupChatMemberUserCreate(func(ctx context.Context, e *openevent.V7AppGroupChatMemberUserCreateEvent) error {
+			log.Printf("[用户进群] chat=%s", e.Data.ChatId)
+			return nil
+		})
 
-		// 解析事件数据
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(e.Data), &data); err != nil {
-			log.Printf("解析事件数据失败: %v", err)
-			return err
-		}
-
-		log.Printf("[聊天消息] 事件数据: %+v", data)
+	// 使用 RegisterFunc 处理其他事件（需自行解析 Data）
+	dispatcher.RegisterFunc("kso.user.status.update", func(ctx context.Context, e *openevent.Event) error {
+		var data map[string]any
+		json.Unmarshal([]byte(e.Data), &data)
+		log.Printf("[用户状态] %+v", data)
 		return nil
 	})
 
-	// 注册用户状态变更事件处理器
-	dispatcher.RegisterFunc("kso.user.status.update", func(ctx context.Context, e *event.Event) error {
-		log.Printf("[用户状态变更] event_code=%s", e.EventCode())
-		log.Printf("[用户状态变更] 事件数据: %s", e.Data)
+	// 兜底处理器
+	dispatcher.RegisterFallbackFunc(func(ctx context.Context, e *openevent.Event) error {
+		log.Printf("[未处理] event_code=%s", e.EventCode())
 		return nil
 	})
 
-	// 注册兜底处理器，处理未注册的事件编码
-	dispatcher.RegisterFallbackFunc(func(ctx context.Context, e *event.Event) error {
-		log.Printf("[未知事件] event_code=%s", e.EventCode())
-		log.Printf("[未知事件] 事件数据: %s", e.Data)
-		return nil
-	})
-
-	// 打印已注册的事件编码
-	log.Printf("已注册的事件编码: %v", dispatcher.EventCodes())
-
-	// 创建 WebSocket 客户端
-	// 使用默认端点 wss://openapi.wps.cn/v7/event/ws
-	client := ws.NewClient(appId, appSecret,
-		ws.WithDispatcher(dispatcher),
-		ws.WithLogLevel(core.LogLevelInfo),
+	client := openevent.NewClient(appId, appSecret,
+		openevent.WithDispatcher(dispatcher),
+		openevent.WithLogLevel(openevent.LogLevelInfo),
 	)
 
-	// 创建可取消的 context
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// 监听退出信号
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
-		log.Println("收到退出信号，正在关闭...")
 		cancel()
 		client.Stop()
 	}()
