@@ -13,7 +13,7 @@
 ## 安装
 
 ```bash
-go get github.com/GongchuangSu/open-event-sdk-go
+go get github.com/GongchuangSu/open-event-sdk-go@v1.0.1
 ```
 
 ## 快速开始
