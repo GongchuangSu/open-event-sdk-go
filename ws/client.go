@@ -262,12 +262,6 @@ func (c *Client) connect(ctx context.Context) error {
 		return nil
 	})
 
-	// 设置 Pong 处理器（用于客户端主动发送 Ping 的场景）
-	conn.SetPongHandler(func(appData string) error {
-		c.logger.Debug(ctx, "received pong")
-		return conn.SetReadDeadline(time.Now().Add(c.pongWait))
-	})
-
 	c.logger.Info(ctx, fmt.Sprintf("connected to %s", c.endpoint))
 
 	return nil
