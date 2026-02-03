@@ -141,3 +141,12 @@ func WithPongWait(wait time.Duration) Option {
 		}
 	}
 }
+
+// WithAckMode 设置是否启用 ACK 模式
+// 启用后，事件处理结果会发送给服务端，处理失败时服务端会触发重试
+// 默认值: true
+func WithAckMode(enabled bool) Option {
+	return func(c *Client) {
+		c.ackMode = enabled
+	}
+}

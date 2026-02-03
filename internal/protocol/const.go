@@ -26,6 +26,9 @@ const (
 
 // 默认配置常量
 const (
+	// DefaultAckMode 默认开启 ACK 模式
+	DefaultAckMode = true
+
 	// DefaultAutoReconnect 默认开启自动重连
 	DefaultAutoReconnect = true
 

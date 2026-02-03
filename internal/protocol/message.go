@@ -38,3 +38,19 @@ type GoAwayMessage struct {
 	// ReconnectMs 建议重连延迟（毫秒），仅在 server_shutdown 时提供
 	ReconnectMs int `json:"reconnect_ms,omitempty"`
 }
+
+// AckMessage 客户端响应消息（客户端 -> 服务端）
+// 用于 ACK 模式下向服务端报告事件处理结果
+type AckMessage struct {
+	// Type 消息类型，固定为 "ack"
+	Type string `json:"type"`
+
+	// Nonce 对应事件的 nonce 标识
+	Nonce string `json:"nonce"`
+
+	// Code 处理结果码：200 表示成功，非 200 表示失败
+	Code int `json:"code"`
+
+	// Msg 错误信息（可选，仅在失败时提供）
+	Msg string `json:"msg,omitempty"`
+}

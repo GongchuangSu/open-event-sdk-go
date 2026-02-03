@@ -59,6 +59,9 @@ type Client struct {
 
 	// 消息发送通道
 	sendChan chan []byte
+
+	// ACK 模式配置
+	ackMode bool // 是否启用 ACK 模式（处理结果反馈，支持服务端重试）
 }
 
 // NewClient 创建 WebSocket 客户端
@@ -88,6 +91,7 @@ func NewClient(appId, appSecret string, opts ...Option) *Client {
 		reconnectJitter:       protocol.DefaultReconnectJitter,
 		writeWait:             protocol.DefaultWriteWait,
 		pongWait:              protocol.DefaultPongWait,
+		ackMode:               protocol.DefaultAckMode,
 
 		logLevel: core.LogLevelInfo,
 		sendChan: make(chan []byte, 256),
@@ -214,7 +218,12 @@ func (c *Client) connect(ctx context.Context) error {
 		return fmt.Errorf("sign failed: %w", err)
 	}
 
-	c.logger.Debug(ctx, fmt.Sprintf("connecting to %s", c.endpoint))
+	// 如果启用 ACK 模式，添加协商 Header
+	if c.ackMode {
+		headers.Set("X-Ack-Mode", "required")
+	}
+
+	c.logger.Debug(ctx, fmt.Sprintf("connecting to %s, ack_mode: %v", c.endpoint, c.ackMode))
 
 	// 建立 WebSocket 连接
 	dialer := websocket.DefaultDialer
@@ -479,18 +488,75 @@ func (c *Client) handleEventMessage(ctx context.Context, message []byte) {
 	evt := event.NewEvent(msg.Topic, msg.Operation, msg.Time, decryptedData)
 
 	// 调用处理器
+	var handleErr error
 	if c.dispatcher != nil {
-		err = c.dispatcher.Handle(ctx, evt)
+		handleErr = c.dispatcher.Handle(ctx, evt)
 	} else if c.eventHandler != nil {
-		err = c.eventHandler.Handle(ctx, evt)
+		handleErr = c.eventHandler.Handle(ctx, evt)
 	}
 
-	if err != nil {
-		c.logger.Error(ctx, fmt.Sprintf("handle event failed: %v", err))
+	// 如果启用 ACK 模式，发送 ACK
+	if c.ackMode {
+		c.sendAck(ctx, msg.Nonce, handleErr)
+	}
+
+	if handleErr != nil {
+		c.logger.Error(ctx, fmt.Sprintf("handle event failed: %v", handleErr))
 		return
 	}
 
 	c.logger.Debug(ctx, fmt.Sprintf("event handled: event_code=%s", eventCode))
+}
+
+// sendAck 发送 ACK 消息（ACK 模式下使用）
+func (c *Client) sendAck(ctx context.Context, nonce string, err error) {
+	if nonce == "" {
+		// nonce 为空，打印 Warn 日志
+		c.logger.Warn(ctx, "[WebSocket] ack mode enabled but event nonce is empty, skip sending ack")
+		return
+	}
+
+	ack := &protocol.AckMessage{
+		Type:  "ack",
+		Nonce: nonce,
+		Code:  200,
+	}
+
+	if err != nil {
+		ack.Code = 500
+		errMsg := err.Error()
+		if len(errMsg) > 256 {
+			errMsg = errMsg[:256] + "..."
+		}
+		ack.Msg = errMsg
+	}
+
+	data, marshalErr := json.Marshal(ack)
+	if marshalErr != nil {
+		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] marshal ack failed: %v", marshalErr))
+		return
+	}
+
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		c.logger.Warn(ctx, "[WebSocket] connection is nil, skip sending ack")
+		return
+	}
+
+	if setErr := conn.SetWriteDeadline(time.Now().Add(c.writeWait)); setErr != nil {
+		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] set write deadline failed: %v", setErr))
+		return
+	}
+
+	if writeErr := conn.WriteMessage(websocket.TextMessage, data); writeErr != nil {
+		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] send ack failed: %v", writeErr))
+		return
+	}
+
+	c.logger.Debug(ctx, fmt.Sprintf("[WebSocket] ack sent, nonce: %s, code: %d", nonce, ack.Code))
 }
 
 // handleGoAwayMessage 处理 GoAway 消息
