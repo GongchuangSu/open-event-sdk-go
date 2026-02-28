@@ -26,6 +26,9 @@ const (
 
 // 默认配置常量
 const (
+	// DefaultConcurrency 默认最大并发处理事件数
+	DefaultConcurrency = 200
+
 	// DefaultAckMode 默认开启 ACK 模式
 	DefaultAckMode = true
 

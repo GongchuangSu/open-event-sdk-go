@@ -57,8 +57,15 @@ type Client struct {
 	stopChan       chan struct{}
 	receivedGoAway bool // 是否已收到 GoAway 消息
 
-	// 消息发送通道
+	// 写操作保护（所有 WebSocket 写操作必须通过 writeMessage 方法）
+	writeMu sync.Mutex
+
+	// 消息发送通道（用于串行化 WebSocket 写操作）
 	sendChan chan []byte
+
+	// 并发控制
+	concurrency int           // 最大并发处理事件数
+	workerSem   chan struct{} // 工作信号量，控制并发处理数量
 
 	// ACK 模式配置
 	ackMode bool // 是否启用 ACK 模式（处理结果反馈，支持服务端重试）
@@ -93,15 +100,19 @@ func NewClient(appId, appSecret string, opts ...Option) *Client {
 		pongWait:              protocol.DefaultPongWait,
 		ackMode:               protocol.DefaultAckMode,
 
-		logLevel: core.LogLevelInfo,
-		sendChan: make(chan []byte, 256),
-		stopChan: make(chan struct{}),
+		logLevel:    core.LogLevelInfo,
+		sendChan:    make(chan []byte, 256),
+		stopChan:    make(chan struct{}),
+		concurrency: protocol.DefaultConcurrency,
 	}
 
 	// 应用配置选项
 	for _, opt := range opts {
 		opt(c)
 	}
+
+	// 初始化工作信号量
+	c.workerSem = make(chan struct{}, c.concurrency)
 
 	// 如果没有设置 logger，使用默认 logger
 	if c.logger == nil {
@@ -245,8 +256,7 @@ func (c *Client) connect(ctx context.Context) error {
 	c.receivedGoAway = false // 重置 GoAway 标志
 
 	// 设置 Ping 处理器（服务端主动发送 Ping，客户端需要回复 Pong 并刷新超时）
-	// 注意：gorilla/websocket 默认的 PingHandler 会自动回复 Pong，
-	// 但设置自定义 PingHandler 后需要手动回复
+	// 通过统一的 writeMessage 方法回复 Pong，确保与 ACK 等写操作串行化
 	conn.SetPingHandler(func(appData string) error {
 		c.logger.Debug(ctx, "received ping from server")
 		// 刷新读超时
@@ -254,8 +264,8 @@ func (c *Client) connect(ctx context.Context) error {
 			c.logger.Error(ctx, fmt.Sprintf("set read deadline failed in ping handler: %v", err))
 			return err
 		}
-		// 回复 Pong
-		if err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(c.writeWait)); err != nil {
+		// 回复 Pong（通过 writeMessage 统一写入路径）
+		if err := c.writeMessage(websocket.PongMessage, []byte(appData)); err != nil {
 			c.logger.Error(ctx, fmt.Sprintf("write pong failed: %v", err))
 			return err
 		}
@@ -350,10 +360,20 @@ func (c *Client) calculateBackoffWithJitter(interval time.Duration) time.Duratio
 
 // receiveLoop 消息接收循环
 func (c *Client) receiveLoop(ctx context.Context) {
+	// 创建用于通知 writeLoop 退出的 channel
+	writeDone := make(chan struct{})
+
+	// 启动写入协程，串行化所有 WebSocket 写操作
+	go c.writeLoop(ctx, writeDone)
+
 	defer func() {
 		if r := recover(); r != nil {
 			c.logger.Error(ctx, fmt.Sprintf("receive loop panic: %v\n%s", r, debug.Stack()))
 		}
+
+		// 通知 writeLoop 退出并等待其完成
+		close(writeDone)
+
 		c.disconnect(ctx)
 
 		// 如果开启了自动重连且未关闭，尝试重连
@@ -405,7 +425,6 @@ func (c *Client) receiveLoop(ctx context.Context) {
 			c.mu.Unlock()
 
 			if goAwayReceived {
-				// 收到 GoAway 后的连接关闭是预期行为，不需要输出错误日志
 				c.logger.Debug(ctx, fmt.Sprintf("connection closed after goaway: %v", err))
 			} else {
 				c.logger.Error(ctx, fmt.Sprintf("read message failed: %v", err))
@@ -419,8 +438,50 @@ func (c *Client) receiveLoop(ctx context.Context) {
 			continue
 		}
 
-		// 异步处理消息
-		go c.handleMessage(ctx, message)
+		// 异步处理消息，信号量在 goroutine 内部获取，不阻塞 receiveLoop 读取
+		go func(msg []byte) {
+			// 获取工作信号量（如果已满，当前 goroutine 等待，不影响 receiveLoop）
+			c.workerSem <- struct{}{}
+			defer func() { <-c.workerSem }()
+
+			c.handleMessage(ctx, msg)
+		}(message)
+	}
+}
+
+// writeLoop 写入循环，消费 sendChan 中的消息并通过 writeMessage 写入
+// 与 PingHandler 共享 writeMu 锁，确保所有写操作串行化
+func (c *Client) writeLoop(ctx context.Context, done <-chan struct{}) {
+	for {
+		select {
+		case data := <-c.sendChan:
+			if err := c.writeMessage(websocket.TextMessage, data); err != nil {
+				c.logger.Error(ctx, fmt.Sprintf("[WebSocket] write message failed: %v", err))
+			}
+		case <-done:
+			c.drainSendChan(ctx)
+			return
+		case <-c.stopChan:
+			c.drainSendChan(ctx)
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// drainSendChan 排空 sendChan 中的剩余消息
+func (c *Client) drainSendChan(ctx context.Context) {
+	for {
+		select {
+		case data := <-c.sendChan:
+			if err := c.writeMessage(websocket.TextMessage, data); err != nil {
+				c.logger.Debug(ctx, fmt.Sprintf("[WebSocket] drain write failed: %v", err))
+				return
+			}
+		default:
+			return
+		}
 	}
 }
 
@@ -521,9 +582,9 @@ func (c *Client) handleEventMessage(ctx context.Context, message []byte) {
 }
 
 // sendAck 发送 ACK 消息（ACK 模式下使用）
+// 通过 sendChan 投递到 writeLoop 串行写入，避免并发写入 WebSocket 连接
 func (c *Client) sendAck(ctx context.Context, nonce string, err error) {
 	if nonce == "" {
-		// nonce 为空，打印 Warn 日志
 		c.logger.Warn(ctx, "[WebSocket] ack mode enabled but event nonce is empty, skip sending ack")
 		return
 	}
@@ -549,26 +610,12 @@ func (c *Client) sendAck(ctx context.Context, nonce string, err error) {
 		return
 	}
 
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		c.logger.Warn(ctx, "[WebSocket] connection is nil, skip sending ack")
-		return
+	select {
+	case c.sendChan <- data:
+		c.logger.Debug(ctx, fmt.Sprintf("[WebSocket] ack queued, nonce: %s, code: %d", nonce, ack.Code))
+	default:
+		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] sendChan full, ack dropped, nonce: %s", nonce))
 	}
-
-	if setErr := conn.SetWriteDeadline(time.Now().Add(c.writeWait)); setErr != nil {
-		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] set write deadline failed: %v", setErr))
-		return
-	}
-
-	if writeErr := conn.WriteMessage(websocket.TextMessage, data); writeErr != nil {
-		c.logger.Error(ctx, fmt.Sprintf("[WebSocket] send ack failed: %v", writeErr))
-		return
-	}
-
-	c.logger.Debug(ctx, fmt.Sprintf("[WebSocket] ack sent, nonce: %s, code: %d", nonce, ack.Code))
 }
 
 // handleGoAwayMessage 处理 GoAway 消息
@@ -601,6 +648,26 @@ func (c *Client) handleGoAwayMessage(ctx context.Context, message []byte) {
 		c.reconnectBaseInterval = time.Duration(msg.ReconnectMs) * time.Millisecond
 		c.mu.Unlock()
 	}
+}
+
+// writeMessage 统一的 WebSocket 写操作方法
+// 所有写操作（ACK、Pong 等）都必须通过此方法，确保写入串行化
+func (c *Client) writeMessage(messageType int, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+
+	if err := conn.SetWriteDeadline(time.Now().Add(c.writeWait)); err != nil {
+		return err
+	}
+	return conn.WriteMessage(messageType, data)
 }
 
 // parseConnectError 解析连接错误
