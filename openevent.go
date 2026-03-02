@@ -161,10 +161,6 @@ var WithWriteWait = ws.WithWriteWait
 // WithPongWait 设置等待 Pong 响应超时时间（默认: 90秒）
 var WithPongWait = ws.WithPongWait
 
-// WithConcurrency 设置最大并发处理事件数（默认: 200）
-// 控制同时处理事件的 goroutine 数量，防止突发流量导致资源耗尽
-var WithConcurrency = ws.WithConcurrency
-
 // WithAckMode 设置是否启用 ACK 模式（默认: true）
 // 启用后，事件处理结果会发送给服务端，处理失败时服务端会触发重试
 var WithAckMode = ws.WithAckMode

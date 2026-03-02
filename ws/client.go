@@ -63,10 +63,6 @@ type Client struct {
 	// 消息发送通道（用于串行化 WebSocket 写操作）
 	sendChan chan []byte
 
-	// 并发控制
-	concurrency int           // 最大并发处理事件数
-	workerSem   chan struct{} // 工作信号量，控制并发处理数量
-
 	// ACK 模式配置
 	ackMode bool // 是否启用 ACK 模式（处理结果反馈，支持服务端重试）
 }
@@ -100,19 +96,15 @@ func NewClient(appId, appSecret string, opts ...Option) *Client {
 		pongWait:              protocol.DefaultPongWait,
 		ackMode:               protocol.DefaultAckMode,
 
-		logLevel:    core.LogLevelInfo,
-		sendChan:    make(chan []byte, 256),
-		stopChan:    make(chan struct{}),
-		concurrency: protocol.DefaultConcurrency,
+		logLevel: core.LogLevelInfo,
+		sendChan: make(chan []byte, 256),
+		stopChan: make(chan struct{}),
 	}
 
 	// 应用配置选项
 	for _, opt := range opts {
 		opt(c)
 	}
-
-	// 初始化工作信号量
-	c.workerSem = make(chan struct{}, c.concurrency)
 
 	// 如果没有设置 logger，使用默认 logger
 	if c.logger == nil {
@@ -438,14 +430,8 @@ func (c *Client) receiveLoop(ctx context.Context) {
 			continue
 		}
 
-		// 异步处理消息，信号量在 goroutine 内部获取，不阻塞 receiveLoop 读取
-		go func(msg []byte) {
-			// 获取工作信号量（如果已满，当前 goroutine 等待，不影响 receiveLoop）
-			c.workerSem <- struct{}{}
-			defer func() { <-c.workerSem }()
-
-			c.handleMessage(ctx, msg)
-		}(message)
+		// 异步处理消息
+		go c.handleMessage(ctx, message)
 	}
 }
 
