@@ -5,7 +5,7 @@ import "context"
 // Handler 事件处理器接口
 type Handler interface {
 	// Handle 处理事件
-	// 返回 error 时，SDK 不会发送 ACK 确认消息
+	// ACK 模式下：处理成功时发送 code=200 的 ACK，处理失败时发送 code=500 的 ACK（服务端会触发重试）
 	Handle(ctx context.Context, event *Event) error
 }
 
