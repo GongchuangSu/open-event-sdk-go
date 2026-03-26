@@ -17,17 +17,31 @@
 
 ### 安装
 
-**方式一：一键安装脚本**（推荐，自动检测平台）
+**方式一：一键安装脚本**（推荐，自动检测平台架构）
+
+macOS / Linux：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh | bash
 ```
 
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.ps1 | iex
+```
+
 指定版本或安装目录：
 
 ```bash
+# macOS / Linux
 VERSION=1.1.0 INSTALL_DIR=~/.local/bin bash -c "$(curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh)"
+
+# Windows PowerShell
+$env:VERSION="1.1.0"; irm https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.ps1 | iex
 ```
+
+> **注意**：安装脚本依赖 GitHub Releases 产物，需要仓库已发布过 tag（见下方「发布新版本」章节），否则脚本会因无法获取版本号而失败。
 
 **方式二：go install**
 
@@ -45,6 +59,14 @@ make install          # 安装到 $GOPATH/bin
 ```
 
 **方式四：从 [GitHub Releases](https://github.com/GongchuangSu/open-event-sdk-go/releases) 手动下载**
+
+支持的平台和架构：
+
+| 平台 | 架构 | 文件格式 |
+|------|------|----------|
+| macOS (darwin) | amd64 / arm64 | `.tar.gz` |
+| Linux | amd64 / arm64 | `.tar.gz` |
+| Windows | amd64 / arm64 | `.zip` |
 
 ### 使用
 
@@ -134,6 +156,34 @@ make                  # 默认: lint + test + build
 ```
 openevent v1.0.2 (125f725, 2026-03-26T03:01:35Z)
 ```
+
+### 发布新版本
+
+发布流程完全自动化，只需推送 tag 即可触发：
+
+```bash
+# 1. 确认主分支代码就绪
+git checkout main && git pull
+
+# 2. 创建版本 tag（遵循语义化版本）
+git tag v1.1.0
+
+# 3. 推送 tag，自动触发 GitHub Actions → GoReleaser
+git push origin v1.1.0
+```
+
+推送 tag 后自动执行的流程：
+
+1. **GitHub Actions** 检测到 `v*` tag 推送，触发 `.github/workflows/release.yaml`
+2. **GoReleaser** 自动执行：
+   - 交叉编译 6 个平台二进制（macOS/Linux/Windows × amd64/arm64）
+   - 通过 `-ldflags` 注入版本号、commit hash、构建时间
+   - macOS/Linux 打包为 `.tar.gz`，Windows 打包为 `.zip`
+   - 生成 `checksums.txt` 校验文件
+   - 创建 GitHub Release 页面并上传所有产物
+3. 用户即可通过 `install.sh` / `install.ps1` / `go install` / 手动下载 安装新版本
+
+> GoReleaser 配置位于 `.goreleaser.yaml`，Release workflow 位于 `.github/workflows/release.yaml`。
 
 ---
 
@@ -542,7 +592,8 @@ open-event-sdk-go/
 │   ├── kso/                # KSO-1 签名和加解密
 │   └── protocol/           # WebSocket 协议定义
 ├── scripts/                # 安装脚本
-│   └── install.sh
+│   ├── install.sh          # macOS / Linux
+│   └── install.ps1         # Windows (PowerShell)
 └── examples/               # 使用示例
     ├── simple/             # 简单示例
     └── dispatcher/         # Dispatcher 模式示例
