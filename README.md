@@ -9,8 +9,137 @@
 - **KSO-1 签名认证**：安全的认证机制
 - **灵活的事件处理**：支持单一 Handler 和 Dispatcher 分发两种模式
 - **开箱即用**：内置默认配置，无需额外设置即可使用
+- **CLI 工具**：零代码接收事件，终端实时查看，适合快速验证和调试
 
-## 安装
+## CLI 工具 (openevent)
+
+`openevent` 是基于本 SDK 的命令行工具，无需编写代码即可接收事件推送，适合快速验证事件配置。
+
+### 安装
+
+**方式一：一键安装脚本**（推荐，自动检测平台）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh | bash
+```
+
+指定版本或安装目录：
+
+```bash
+VERSION=1.1.0 INSTALL_DIR=~/.local/bin bash -c "$(curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh)"
+```
+
+**方式二：go install**
+
+```bash
+go install github.com/GongchuangSu/open-event-sdk-go/cmd/openevent@latest
+```
+
+**方式三：从源码构建**
+
+```bash
+git clone https://github.com/GongchuangSu/open-event-sdk-go.git
+cd open-event-sdk-go
+make build            # 产物在 output/openevent
+make install          # 安装到 $GOPATH/bin
+```
+
+**方式四：从 [GitHub Releases](https://github.com/GongchuangSu/open-event-sdk-go/releases) 手动下载**
+
+### 使用
+
+**凭证提供方式**（按优先级从高到低）：
+
+| 优先级 | 方式 | 示例 |
+|--------|------|------|
+| 1 | 命令行参数 | `--app-id xxx --app-secret yyy` |
+| 2 | 环境变量 | `APP_ID=xxx APP_SECRET=yyy` |
+| 3 | 交互式输入 | 自动检测 TTY，密码隐藏显示 |
+
+```bash
+# 使用命令行参数
+openevent listen --app-id YOUR_APP_ID --app-secret YOUR_APP_SECRET
+
+# 使用环境变量
+export APP_ID=your_app_id
+export APP_SECRET=your_app_secret
+openevent listen
+
+# 交互式输入（仅 TTY 终端，密码不回显）
+openevent listen
+
+# 过滤特定事件
+openevent listen --events "kso.app_chat.message.create,kso.app_chat.create"
+
+# JSON 输出（适合管道和日志采集）
+openevent listen --json | jq .
+
+# 同时输出到文件
+openevent listen --output events.log
+
+# 查看 SDK 内部调试日志
+openevent listen --verbose
+```
+
+### 命令参考
+
+```
+openevent listen [flags]
+openevent version
+openevent help
+```
+
+**listen 选项：**
+
+| 选项 | 缩写 | 类型 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--app-id` | | string | | 应用 ID |
+| `--app-secret` | | string | | 应用密钥 |
+| `--events` | `-e` | string | | 事件类型过滤（逗号分隔，精确匹配） |
+| `--json` | | bool | false | 以 NDJSON 格式输出（每行一个 JSON 对象） |
+| `--output` | `-o` | string | | 同时输出到文件（create/truncate 模式） |
+| `--verbose` | `-v` | bool | false | 显示详细日志（DEBUG 级别，输出到 stderr） |
+| `--no-color` | | bool | false | 禁用彩色输出 |
+| `--no-ack` | | bool | false | 禁用 ACK 模式（默认开启，失败时服务端重试） |
+| `--endpoint` | | string | | 自定义 WebSocket 端点 |
+
+**退出码：**
+
+| 退出码 | 含义 | 场景 |
+|--------|------|------|
+| 0 | 正常退出 | Ctrl+C / SIGTERM 优雅关闭 |
+| 1 | 凭证错误 | 缺少 APP_ID/APP_SECRET、认证失败 |
+| 2 | 连接失败 | 重连次数耗尽、服务端不可达 |
+| 3 | 运行时错误 | 文件打开失败、其他未预期错误 |
+
+### 本地开发
+
+项目提供 `Makefile` 管理构建和测试流程：
+
+```bash
+make help             # 查看所有可用目标
+make build            # 构建 CLI 到 output/openevent（自动注入版本信息）
+make test             # 运行全部单元测试
+make test-race        # 运行测试（含竞态检测）
+make test-cover       # 运行测试并生成覆盖率报告
+make lint             # 代码静态分析（go vet）
+make run ARGS="listen --help"  # go run 直接运行
+make clean            # 清理构建产物
+make install          # 安装到 $GOPATH/bin
+make                  # 默认: lint + test + build
+```
+
+构建产物会通过 `-ldflags` 自动注入版本信息，`openevent version` 将输出：
+
+```
+openevent v1.0.2 (125f725, 2026-03-26T03:01:35Z)
+```
+
+---
+
+## SDK 使用
+
+### 安装
 
 ```bash
 go get github.com/GongchuangSu/open-event-sdk-go@v1.0.1
@@ -379,7 +508,23 @@ client := openevent.NewClient(appId, appSecret,
 
 ```
 open-event-sdk-go/
+├── Makefile                # 构建/测试/安装
+├── .goreleaser.yaml        # 多平台发布配置
+├── .github/workflows/      # CI/CD
+│   ├── ci.yaml             # 测试 + lint（Go 1.21-1.23）
+│   └── release.yaml        # tag → GoReleaser 发布
 ├── openevent.go            # 根包入口（推荐使用）
+├── cmd/openevent/          # CLI 工具
+│   ├── main.go             # 入口（版本注入点）
+│   ├── cmd/                # Cobra 命令
+│   │   ├── root.go         # 根命令 + 退出码
+│   │   ├── listen.go       # listen 子命令
+│   │   └── version.go      # version 子命令
+│   └── internal/           # CLI 内部实现
+│       ├── credential.go   # 凭证解析（flag → env → TTY）
+│       ├── printer.go      # 事件输出（channel 序列化）
+│       ├── filter.go       # 事件过滤
+│       └── logger.go       # Stderr 日志
 ├── ws/                     # WebSocket 客户端
 │   ├── client.go           # 客户端主逻辑
 │   ├── option.go           # 配置选项
@@ -391,15 +536,13 @@ open-event-sdk-go/
 │   ├── handler.go          # Handler 接口
 │   ├── event.go            # 事件实体
 │   └── model/              # 事件数据模型
-│       ├── common.go       # 通用类型（Identity 等）
-│       ├── im.go           # IM 相关类型
-│       ├── im_event.go     # IM 事件数据结构
-│       └── event_code.go   # 事件编码常量
 ├── core/                   # 核心公共组件
 │   └── logger.go           # 日志接口
 ├── internal/               # 内部实现（不对外暴露）
 │   ├── kso/                # KSO-1 签名和加解密
 │   └── protocol/           # WebSocket 协议定义
+├── scripts/                # 安装脚本
+│   └── install.sh
 └── examples/               # 使用示例
     ├── simple/             # 简单示例
     └── dispatcher/         # Dispatcher 模式示例
