@@ -19,13 +19,13 @@
 
 **方式一：一键安装脚本**（推荐，自动检测平台架构）
 
-macOS / Linux：
+macOS / Linux / Windows (Git Bash)：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh | bash
 ```
 
-Windows（PowerShell）：
+Windows（PowerShell 原生）：
 
 ```powershell
 irm https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.ps1 | iex
@@ -34,7 +34,7 @@ irm https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/script
 指定版本或安装目录：
 
 ```bash
-# macOS / Linux
+# macOS / Linux / Windows (Git Bash)
 VERSION=1.1.0 INSTALL_DIR=~/.local/bin bash -c "$(curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh)"
 
 # Windows PowerShell

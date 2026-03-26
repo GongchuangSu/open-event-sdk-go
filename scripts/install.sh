@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# openevent CLI 安装脚本
+# openevent CLI 安装脚本（macOS / Linux / Windows Git Bash）
 # 用法: curl -fsSL https://raw.githubusercontent.com/GongchuangSu/open-event-sdk-go/main/scripts/install.sh | bash
 set -euo pipefail
 
 REPO="GongchuangSu/open-event-sdk-go"
 BINARY="openevent"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 detect_os() {
   local os
-  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  os="$(uname -s)"
   case "$os" in
-    linux)  echo "linux" ;;
-    darwin) echo "darwin" ;;
-    *)      echo "unsupported" ;;
+    Linux)              echo "linux" ;;
+    Darwin)             echo "darwin" ;;
+    MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+    *)                  echo "unsupported" ;;
   esac
 }
 
@@ -21,7 +21,7 @@ detect_arch() {
   local arch
   arch="$(uname -m)"
   case "$arch" in
-    x86_64|amd64) echo "amd64" ;;
+    x86_64|amd64)  echo "amd64" ;;
     arm64|aarch64) echo "arm64" ;;
     *)             echo "unsupported" ;;
   esac
@@ -32,8 +32,17 @@ get_latest_version() {
     grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/'
 }
 
+default_install_dir() {
+  local os="$1"
+  if [ "$os" = "windows" ]; then
+    echo "${LOCALAPPDATA:-$HOME}/openevent"
+  else
+    echo "/usr/local/bin"
+  fi
+}
+
 main() {
-  local os arch version url tmp_dir
+  local os arch version url tmp_dir ext bin_name install_dir
 
   os="$(detect_os)"
   arch="$(detect_arch)"
@@ -41,6 +50,16 @@ main() {
   if [ "$os" = "unsupported" ] || [ "$arch" = "unsupported" ]; then
     echo "错误: 不支持的平台 $(uname -s)/$(uname -m)" >&2
     exit 1
+  fi
+
+  install_dir="${INSTALL_DIR:-$(default_install_dir "$os")}"
+
+  if [ "$os" = "windows" ]; then
+    ext="zip"
+    bin_name="${BINARY}.exe"
+  else
+    ext="tar.gz"
+    bin_name="${BINARY}"
   fi
 
   echo "检测到平台: ${os}/${arch}"
@@ -58,35 +77,62 @@ main() {
 
   echo "安装版本: v${version}"
 
-  url="https://github.com/${REPO}/releases/download/v${version}/${BINARY}_${version}_${os}_${arch}.tar.gz"
+  url="https://github.com/${REPO}/releases/download/v${version}/${BINARY}_${version}_${os}_${arch}.${ext}"
 
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
 
   echo "正在下载 ${url}..."
-  if ! curl -fsSL "$url" -o "${tmp_dir}/archive.tar.gz"; then
+  if ! curl -fsSL "$url" -o "${tmp_dir}/archive.${ext}"; then
     echo "错误: 下载失败，请检查版本号和网络连接" >&2
     exit 1
   fi
 
-  tar -xzf "${tmp_dir}/archive.tar.gz" -C "$tmp_dir"
+  if [ "$ext" = "zip" ]; then
+    if command -v unzip >/dev/null 2>&1; then
+      unzip -qo "${tmp_dir}/archive.zip" -d "$tmp_dir"
+    elif command -v powershell >/dev/null 2>&1; then
+      powershell -NoProfile -Command \
+        "Expand-Archive -Force '${tmp_dir}/archive.zip' '${tmp_dir}'"
+    else
+      echo "错误: 需要 unzip 或 powershell 来解压 .zip 文件" >&2
+      exit 1
+    fi
+  else
+    tar -xzf "${tmp_dir}/archive.tar.gz" -C "$tmp_dir"
+  fi
 
-  if [ ! -f "${tmp_dir}/${BINARY}" ]; then
-    echo "错误: 解压后未找到 ${BINARY} 二进制文件" >&2
+  if [ ! -f "${tmp_dir}/${bin_name}" ]; then
+    echo "错误: 解压后未找到 ${bin_name}" >&2
     exit 1
   fi
 
-  chmod +x "${tmp_dir}/${BINARY}"
+  chmod +x "${tmp_dir}/${bin_name}"
 
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "${tmp_dir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+  mkdir -p "$install_dir"
+
+  if [ -w "$install_dir" ]; then
+    mv "${tmp_dir}/${bin_name}" "${install_dir}/${bin_name}"
   else
-    echo "需要 sudo 权限安装到 ${INSTALL_DIR}"
-    sudo mv "${tmp_dir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+    echo "需要 sudo 权限安装到 ${install_dir}"
+    sudo mv "${tmp_dir}/${bin_name}" "${install_dir}/${bin_name}"
   fi
 
   echo ""
-  echo "✔ ${BINARY} v${version} 已安装到 ${INSTALL_DIR}/${BINARY}"
+  echo "✔ ${BINARY} v${version} 已安装到 ${install_dir}/${bin_name}"
+
+  if [ "$os" = "windows" ]; then
+    case ":${PATH}:" in
+      *":${install_dir}:"*) ;;
+      *)
+        echo ""
+        echo "提示: 请将 ${install_dir} 添加到 PATH 环境变量"
+        echo "  PowerShell: \$env:Path += \";${install_dir}\""
+        echo "  或通过 系统属性 → 环境变量 永久添加"
+        ;;
+    esac
+  fi
+
   echo ""
   echo "快速开始:"
   echo "  ${BINARY} listen --app-id YOUR_APP_ID --app-secret YOUR_APP_SECRET"
