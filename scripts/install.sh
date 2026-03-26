@@ -28,7 +28,15 @@ detect_arch() {
 }
 
 get_latest_version() {
-  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
+  # 通过重定向 URL 提取版本号，不依赖 GitHub API（避免限流 403）
+  local url
+  url="$(curl -fsSI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null)"
+  if [ -n "$url" ]; then
+    echo "$url" | sed -E 's|.*/v?||'
+    return
+  fi
+  # 回退到 API 方式
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
     grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/'
 }
 

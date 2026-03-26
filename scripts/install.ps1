@@ -15,6 +15,17 @@ function Get-Arch {
 }
 
 function Get-LatestVersion {
+    # 通过重定向 URL 提取版本号，不依赖 GitHub API（避免限流 403）
+    try {
+        $response = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" `
+            -MaximumRedirection 0 -ErrorAction SilentlyContinue -UseBasicParsing
+    } catch {
+        $redirectUrl = $_.Exception.Response.Headers.Location
+        if ($redirectUrl) {
+            return ($redirectUrl -split '/v')[-1]
+        }
+    }
+    # 回退到 API 方式
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
     return $release.tag_name -replace '^v', ''
 }
