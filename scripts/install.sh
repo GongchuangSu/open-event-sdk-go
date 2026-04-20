@@ -29,11 +29,15 @@ detect_arch() {
 
 get_latest_version() {
   # 通过重定向 URL 提取版本号，不依赖 GitHub API（避免限流 403）
-  local url
-  url="$(curl -fsSI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null)"
+  # -L 跟随 302 重定向，url_effective 获取最终 URL（如 .../releases/tag/v1.1.0）
+  local url version
+  url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null)"
   if [ -n "$url" ]; then
-    echo "$url" | sed -E 's|.*/v?||'
-    return
+    version="$(echo "$url" | sed -E 's|.*/v?||')"
+    if [ -n "$version" ] && [ "$version" != "latest" ]; then
+      echo "$version"
+      return
+    fi
   fi
   # 回退到 API 方式
   curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
