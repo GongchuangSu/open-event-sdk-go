@@ -92,7 +92,7 @@ main() {
   url="https://github.com/${REPO}/releases/download/v${version}/${BINARY}_${version}_${os}_${arch}.${ext}"
 
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap 'rm -rf "${tmp_dir:-}"' EXIT
 
   echo "正在下载 ${url}..."
   if ! curl -fsSL "$url" -o "${tmp_dir}/archive.${ext}"; then
