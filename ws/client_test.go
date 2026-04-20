@@ -74,6 +74,66 @@ func TestWithEndpoint_IgnoresEmpty(t *testing.T) {
 	assert.Equal(t, protocol.DefaultEndpoint, c.endpoint)
 }
 
+func TestWithBaseUrl(t *testing.T) {
+	tests := []struct {
+		name         string
+		baseUrl      string
+		wantEndpoint string
+		wantSignPath string
+	}{
+		{
+			name:         "simple base url",
+			baseUrl:      "wss://openapi-intl.example.com",
+			wantEndpoint: "wss://openapi-intl.example.com/v7/event/ws",
+			wantSignPath: "/v7/event/ws",
+		},
+		{
+			name:         "base url with path prefix",
+			baseUrl:      "wss://ap.wps.com/openapi",
+			wantEndpoint: "wss://ap.wps.com/openapi/v7/event/ws",
+			wantSignPath: "/v7/event/ws",
+		},
+		{
+			name:         "base url with trailing slash",
+			baseUrl:      "wss://ap.wps.com/openapi/",
+			wantEndpoint: "wss://ap.wps.com/openapi/v7/event/ws",
+			wantSignPath: "/v7/event/ws",
+		},
+		{
+			name:         "empty base url keeps default",
+			baseUrl:      "",
+			wantEndpoint: protocol.DefaultEndpoint,
+			wantSignPath: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient("id", "secret", WithBaseUrl(tt.baseUrl))
+			assert.Equal(t, tt.wantEndpoint, c.endpoint)
+			assert.Equal(t, tt.wantSignPath, c.signPath)
+		})
+	}
+}
+
+func TestWithBaseUrl_SignPathUsedForSigning(t *testing.T) {
+	c := NewClient("id", "secret",
+		WithBaseUrl("wss://ap.wps.com/openapi"),
+	)
+
+	assert.Equal(t, "wss://ap.wps.com/openapi/v7/event/ws", c.endpoint)
+	assert.Equal(t, "/v7/event/ws", c.signPath)
+}
+
+func TestWithEndpoint_SignPathNotSet(t *testing.T) {
+	c := NewClient("id", "secret",
+		WithEndpoint("wss://custom.example.com/v7/event/ws"),
+	)
+
+	assert.Equal(t, "wss://custom.example.com/v7/event/ws", c.endpoint)
+	assert.Equal(t, "", c.signPath)
+}
+
 func TestWithLogger_IgnoresNil(t *testing.T) {
 	c := NewClient("id", "secret", WithLogger(nil))
 	assert.NotNil(t, c.logger)

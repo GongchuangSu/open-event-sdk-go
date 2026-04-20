@@ -4,8 +4,14 @@ package protocol
 import "time"
 
 const (
+	// DefaultBaseUrl 默认的 WebSocket 基础地址
+	DefaultBaseUrl = "wss://openapi.wps.cn"
+
+	// DefaultEventPath 默认的事件 WebSocket 路径
+	DefaultEventPath = "/v7/event/ws"
+
 	// DefaultEndpoint 默认的 WebSocket 连接端点
-	DefaultEndpoint = "wss://openapi.wps.cn/v7/event/ws"
+	DefaultEndpoint = DefaultBaseUrl + DefaultEventPath
 
 	// MessageTypeGoAway 关闭通知消息类型
 	// 注：事件消息不包含 type 字段，通过 topic 和 operation 识别

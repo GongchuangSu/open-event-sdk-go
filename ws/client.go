@@ -27,7 +27,8 @@ type Client struct {
 	appSecret string
 
 	// 连接配置
-	endpoint string
+	endpoint string // 完整连接 URL
+	signPath string // 签名用的路径（由 WithBaseUrl 设置，为空时从 endpoint 解析）
 	conn     *websocket.Conn
 	connURL  *url.URL
 
@@ -207,12 +208,16 @@ func (c *Client) connect(ctx context.Context) error {
 		return fmt.Errorf("invalid endpoint: %w", err)
 	}
 
-	// 生成 KSO-1 签名
-	uri := u.RequestURI()
+	// 确定签名用的 URI
+	// 当通过 WithBaseUrl 设置时，使用固定的事件路径（避免反向代理路径前缀导致签名不一致）
+	uri := c.signPath
 	if uri == "" {
-		uri = u.Path
-		if u.RawQuery != "" {
-			uri = uri + "?" + u.RawQuery
+		uri = u.RequestURI()
+		if uri == "" {
+			uri = u.Path
+			if u.RawQuery != "" {
+				uri = uri + "?" + u.RawQuery
+			}
 		}
 	}
 

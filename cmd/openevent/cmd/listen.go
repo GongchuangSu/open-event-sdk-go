@@ -22,6 +22,7 @@ var (
 	jsonFlag      bool
 	outputFlag    string
 	endpointFlag  string
+	baseUrlFlag   string
 	noColorFlag   bool
 	verboseFlag   bool
 	noAckFlag     bool
@@ -58,7 +59,8 @@ func init() {
 	listenCmd.Flags().StringVarP(&eventsFlag, "events", "e", "", "事件类型过滤，逗号分隔")
 	listenCmd.Flags().BoolVar(&jsonFlag, "json", false, "以 NDJSON 格式输出（适合管道）")
 	listenCmd.Flags().StringVarP(&outputFlag, "output", "o", "", "同时输出到文件")
-	listenCmd.Flags().StringVar(&endpointFlag, "endpoint", "", "自定义 WebSocket 端点")
+	listenCmd.Flags().StringVar(&endpointFlag, "endpoint", "", "自定义 WebSocket 端点（完整 URL）")
+	listenCmd.Flags().StringVar(&baseUrlFlag, "base-url", "", "WebSocket 基础地址（自动拼接事件路径，适用于国际化/私有化环境）")
 	listenCmd.Flags().BoolVar(&noColorFlag, "no-color", false, "禁用彩色输出")
 	listenCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "显示详细日志（DEBUG 级别）")
 	listenCmd.Flags().BoolVar(&noAckFlag, "no-ack", false, "禁用 ACK 模式（默认开启）")
@@ -111,6 +113,8 @@ func runListen(cmd *cobra.Command, args []string) error {
 
 	if endpointFlag != "" {
 		opts = append(opts, openevent.WithEndpoint(endpointFlag))
+	} else if baseUrlFlag != "" {
+		opts = append(opts, openevent.WithBaseUrl(baseUrlFlag))
 	}
 
 	client := openevent.NewClient(appId, appSecret, opts...)

@@ -123,7 +123,8 @@ openevent help
 | `--verbose` | `-v` | bool | false | 显示详细日志（DEBUG 级别，输出到 stderr） |
 | `--no-color` | | bool | false | 禁用彩色输出 |
 | `--no-ack` | | bool | false | 禁用 ACK 模式（默认开启，失败时服务端重试） |
-| `--endpoint` | | string | | 自定义 WebSocket 端点 |
+| `--endpoint` | | string | | 自定义 WebSocket 端点（完整 URL） |
+| `--base-url` | | string | | WebSocket 基础地址（自动拼接事件路径，适用于国际化/私有化环境） |
 
 **退出码：**
 
@@ -368,6 +369,32 @@ client := openevent.NewClient(appId, appSecret,
     openevent.WithLogger(customLogger),
 )
 ```
+
+### 国际化/私有化环境
+
+使用 `WithBaseUrl` 设置基础地址，SDK 自动拼接事件路径并处理签名：
+
+```go
+// 国际化环境
+client := openevent.NewClient(appId, appSecret,
+    openevent.WithBaseUrl("wss://ap.wps.com/openapi"),
+)
+
+// 私有化部署
+client := openevent.NewClient(appId, appSecret,
+    openevent.WithBaseUrl("wss://api.mycompany.internal"),
+)
+```
+
+CLI 使用：
+
+```bash
+openevent listen --base-url wss://ap.wps.com/openapi
+```
+
+> **注意**：`WithBaseUrl` 与 `WithEndpoint` 的区别：
+> - `WithBaseUrl`：传入基础地址（如 `wss://ap.wps.com/openapi`），SDK 自动拼接 `/v7/event/ws` 并使用固定路径签名
+> - `WithEndpoint`：传入完整 URL（如 `wss://custom.com/v7/event/ws`），签名使用 URL 的完整路径部分
 
 ### 重连配置（指数退避策略）
 

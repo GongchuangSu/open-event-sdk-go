@@ -1,21 +1,41 @@
 package ws
 
 import (
+	"strings"
 	"time"
 
 	"github.com/GongchuangSu/open-event-sdk-go/core"
 	"github.com/GongchuangSu/open-event-sdk-go/event"
+	"github.com/GongchuangSu/open-event-sdk-go/internal/protocol"
 )
 
 // Option 客户端配置选项
 type Option func(*Client)
 
-// WithEndpoint 设置 WebSocket 连接端点
+// WithEndpoint 设置 WebSocket 连接端点（完整 URL）
 // 默认使用 SDK 内置端点，一般无需设置
+// 签名 URI 从该 URL 的路径部分解析
 func WithEndpoint(endpoint string) Option {
 	return func(c *Client) {
 		if endpoint != "" {
 			c.endpoint = endpoint
+		}
+	}
+}
+
+// WithBaseUrl 设置 WebSocket 基础地址
+// SDK 会自动拼接事件路径（/v7/event/ws），签名始终使用固定事件路径
+// 适用于国际化环境或私有化部署，域名不同但事件路径固定的场景
+//
+// 示例:
+//
+//	openevent.WithBaseUrl("wss://openapi-intl.example.com")         // → wss://openapi-intl.example.com/v7/event/ws
+//	openevent.WithBaseUrl("wss://ap.wps.com/openapi")               // → wss://ap.wps.com/openapi/v7/event/ws
+func WithBaseUrl(baseUrl string) Option {
+	return func(c *Client) {
+		if baseUrl != "" {
+			c.endpoint = strings.TrimRight(baseUrl, "/") + protocol.DefaultEventPath
+			c.signPath = protocol.DefaultEventPath
 		}
 	}
 }

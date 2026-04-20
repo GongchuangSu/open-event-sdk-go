@@ -118,9 +118,14 @@ var NewNopLogger = core.NewNopLogger
 
 // ----- 配置选项 -----
 
-// WithEndpoint 设置 WebSocket 连接端点
+// WithEndpoint 设置 WebSocket 连接端点（完整 URL）
 // 默认使用 SDK 内置端点，一般无需设置
 var WithEndpoint = ws.WithEndpoint
+
+// WithBaseUrl 设置 WebSocket 基础地址
+// SDK 会自动拼接事件路径（/v7/event/ws），签名始终使用固定事件路径
+// 适用于国际化环境或私有化部署，域名不同但事件路径固定的场景
+var WithBaseUrl = ws.WithBaseUrl
 
 // WithLogger 设置自定义日志实例
 var WithLogger = ws.WithLogger
