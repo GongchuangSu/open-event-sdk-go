@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ var (
 	noColorFlag   bool
 	verboseFlag   bool
 	noAckFlag     bool
+	tlsVerifyFlag bool
 )
 
 var listenCmd = &cobra.Command{
@@ -64,6 +66,7 @@ func init() {
 	listenCmd.Flags().BoolVar(&noColorFlag, "no-color", false, "禁用彩色输出")
 	listenCmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "显示详细日志（DEBUG 级别）")
 	listenCmd.Flags().BoolVar(&noAckFlag, "no-ack", false, "禁用 ACK 模式（默认开启）")
+	listenCmd.Flags().BoolVar(&tlsVerifyFlag, "tls-verify", false, "启用 TLS 证书校验（默认跳过，适用于自签证书环境）")
 
 	rootCmd.AddCommand(listenCmd)
 }
@@ -117,6 +120,10 @@ func runListen(cmd *cobra.Command, args []string) error {
 		opts = append(opts, openevent.WithBaseUrl(baseUrlFlag))
 	}
 
+	if tlsVerifyEnabled(tlsVerifyFlag) {
+		opts = append(opts, openevent.WithTLSVerify(true))
+	}
+
 	client := openevent.NewClient(appId, appSecret, opts...)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -159,6 +166,14 @@ func runListen(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 	}
+}
+
+func tlsVerifyEnabled(flag bool) bool {
+	if flag {
+		return true
+	}
+	env := os.Getenv("OPENSEVENT_TLS_VERIFY")
+	return env == "1" || strings.EqualFold(env, "true")
 }
 
 func handleStartError(ctx context.Context, printer *internal.Printer, err error) error {

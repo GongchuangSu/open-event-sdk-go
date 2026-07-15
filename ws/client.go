@@ -3,6 +3,7 @@ package ws
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -66,6 +67,9 @@ type Client struct {
 
 	// ACK 模式配置
 	ackMode bool // 是否启用 ACK 模式（处理结果反馈，支持服务端重试）
+
+	// TLS 配置
+	tlsVerify bool // 是否校验服务端 TLS 证书（默认 false，跳过校验）
 }
 
 // NewClient 创建 WebSocket 客户端
@@ -234,7 +238,7 @@ func (c *Client) connect(ctx context.Context) error {
 	c.logger.Debug(ctx, fmt.Sprintf("connecting to %s, ack_mode: %v", c.endpoint, c.ackMode))
 
 	// 建立 WebSocket 连接
-	dialer := websocket.DefaultDialer
+	dialer := c.newDialer()
 	conn, resp, err := dialer.DialContext(ctx, c.endpoint, headers)
 	if err != nil {
 		if resp != nil {
@@ -272,6 +276,18 @@ func (c *Client) connect(ctx context.Context) error {
 	c.logger.Info(ctx, fmt.Sprintf("connected to %s", c.endpoint))
 
 	return nil
+}
+
+// newDialer 创建 WebSocket 拨号器（拷贝默认配置，避免污染全局 Dialer）
+func (c *Client) newDialer() *websocket.Dialer {
+	dialer := *websocket.DefaultDialer
+	if !c.tlsVerify {
+		if dialer.TLSClientConfig == nil {
+			dialer.TLSClientConfig = &tls.Config{}
+		}
+		dialer.TLSClientConfig.InsecureSkipVerify = true
+	}
+	return &dialer
 }
 
 // disconnect 断开连接

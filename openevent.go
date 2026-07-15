@@ -170,6 +170,9 @@ var WithPongWait = ws.WithPongWait
 // 启用后，事件处理结果会发送给服务端，处理失败时服务端会触发重试
 var WithAckMode = ws.WithAckMode
 
+// WithTLSVerify 设置是否校验服务端 TLS 证书（默认: false，跳过校验）
+var WithTLSVerify = ws.WithTLSVerify
+
 // ----- 日志级别常量 -----
 
 const (

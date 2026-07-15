@@ -101,6 +101,13 @@ openevent listen --output events.log
 
 # 查看 SDK 内部调试日志
 openevent listen --verbose
+
+# 私有化环境（默认跳过 TLS 证书校验，连接自签证书服务）
+openevent listen --base-url wss://api.mycompany.internal
+
+# 生产环境开启 TLS 证书校验
+openevent listen --tls-verify
+OPENSEVENT_TLS_VERIFY=1 openevent listen
 ```
 
 ### 命令参考
@@ -125,6 +132,7 @@ openevent help
 | `--no-ack` | | bool | false | 禁用 ACK 模式（默认开启，失败时服务端重试） |
 | `--endpoint` | | string | | 自定义 WebSocket 端点（完整 URL） |
 | `--base-url` | | string | | WebSocket 基础地址（自动拼接事件路径，适用于国际化/私有化环境） |
+| `--tls-verify` | | bool | false | 启用 TLS 证书校验（默认跳过，适用于自签证书环境） |
 
 **退出码：**
 
@@ -380,7 +388,7 @@ client := openevent.NewClient(appId, appSecret,
     openevent.WithBaseUrl("wss://ap.wps.com/openapi"),
 )
 
-// 私有化部署
+// 私有化部署（默认跳过 TLS 证书校验，可直接连接自签证书服务）
 client := openevent.NewClient(appId, appSecret,
     openevent.WithBaseUrl("wss://api.mycompany.internal"),
 )
@@ -395,6 +403,33 @@ openevent listen --base-url wss://ap.wps.com/openapi
 > **注意**：`WithBaseUrl` 与 `WithEndpoint` 的区别：
 > - `WithBaseUrl`：传入基础地址（如 `wss://ap.wps.com/openapi`），SDK 自动拼接 `/v7/event/ws` 并使用固定路径签名
 > - `WithEndpoint`：传入完整 URL（如 `wss://custom.com/v7/event/ws`），签名使用 URL 的完整路径部分
+
+### TLS 证书校验
+
+SDK 默认**跳过 TLS 证书校验**，方便私有化部署或连接使用自签证书的服务。连接公网正式环境时，建议开启校验。
+
+| 方式 | 说明 |
+|------|------|
+| 默认 | 跳过证书校验 |
+| `WithTLSVerify(true)` | SDK 开启证书校验 |
+| `--tls-verify` | CLI 开启证书校验 |
+| `OPENSEVENT_TLS_VERIFY=1` 或 `true` | 环境变量开启证书校验 |
+
+```go
+// 生产环境建议开启证书校验
+client := openevent.NewClient(appId, appSecret,
+    openevent.WithBaseUrl("wss://openapi.wps.cn"),
+    openevent.WithTLSVerify(true),
+)
+```
+
+```bash
+# CLI 开启证书校验
+openevent listen --tls-verify
+
+# 或通过环境变量
+OPENSEVENT_TLS_VERIFY=1 openevent listen
+```
 
 ### 重连配置（指数退避策略）
 
