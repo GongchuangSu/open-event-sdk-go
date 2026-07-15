@@ -29,6 +29,7 @@ func TestNewClient_DefaultOptions(t *testing.T) {
 	assert.Equal(t, protocol.DefaultWriteWait, c.writeWait)
 	assert.Equal(t, protocol.DefaultPongWait, c.pongWait)
 	assert.Equal(t, protocol.DefaultAckMode, c.ackMode)
+	assert.False(t, c.tlsVerify)
 	assert.NotNil(t, c.logger)
 	assert.NotNil(t, c.sendChan)
 	assert.NotNil(t, c.stopChan)
@@ -185,6 +186,28 @@ func TestWithEventHandlerFunc(t *testing.T) {
 func TestWithLogLevel(t *testing.T) {
 	c := NewClient("id", "secret", WithLogLevel(core.LogLevelDebug))
 	assert.Equal(t, core.LogLevelDebug, c.logLevel)
+}
+
+func TestWithTLSVerify(t *testing.T) {
+	c := NewClient("id", "secret", WithTLSVerify(true))
+	assert.True(t, c.tlsVerify)
+}
+
+func TestNewDialer(t *testing.T) {
+	t.Run("skip verify by default", func(t *testing.T) {
+		c := NewClient("id", "secret")
+		dialer := c.newDialer()
+		require.NotNil(t, dialer.TLSClientConfig)
+		assert.True(t, dialer.TLSClientConfig.InsecureSkipVerify)
+	})
+
+	t.Run("verify when enabled", func(t *testing.T) {
+		c := NewClient("id", "secret", WithTLSVerify(true))
+		dialer := c.newDialer()
+		if dialer.TLSClientConfig != nil {
+			assert.False(t, dialer.TLSClientConfig.InsecureSkipVerify)
+		}
+	})
 }
 
 func TestClient_Start_NoHandler(t *testing.T) {

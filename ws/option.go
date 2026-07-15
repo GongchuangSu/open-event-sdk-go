@@ -170,3 +170,12 @@ func WithAckMode(enabled bool) Option {
 		c.ackMode = enabled
 	}
 }
+
+// WithTLSVerify 设置是否校验服务端 TLS 证书
+// 默认值: false（跳过证书校验，适用于私有化部署或自签证书环境）
+// 生产环境建议开启证书校验
+func WithTLSVerify(enabled bool) Option {
+	return func(c *Client) {
+		c.tlsVerify = enabled
+	}
+}
